@@ -556,9 +556,11 @@ static MIR_insn_code_t get_mir_expr_fcmp_code (LLVMRealPredicate pred, MIR_type_
   case LLVMRealOLT: return type == MIR_T_F ? MIR_FLT : type == MIR_T_D ? MIR_DLT : MIR_LDLT;
   case LLVMRealULE:
   case LLVMRealOLE: return type == MIR_T_F ? MIR_FLE : type == MIR_T_D ? MIR_DLE : MIR_LDLE;
+  case LLVMRealUNO:
   case LLVMRealPredicateFalse: *move_val = 0; return MIR_MOV;
+  case LLVMRealORD:
   case LLVMRealPredicateTrue: *move_val = 1; return MIR_MOV;
-  default: error ("unsupported real predicate");
+  default: printf("pred id:%d\n", pred); error ("unsupported real predicate");
   }
 }
 
@@ -611,7 +613,7 @@ static MIR_type_t get_mir_type (LLVMTypeRef type) {
   case LLVMFunctionTypeKind:
   case LLVMLabelTypeKind: return MIR_T_P;
   case LLVMVectorTypeKind: error ("vectors are not implemented: don't use autovectorization");
-  default: error ("type unrepresentable by MIR types");
+  default: printf("type id:%d\n", (LLVMTypeKind) LLVMGetTypeKind (type)); error ("type unrepresentable by MIR types");
   }
 }
 
@@ -1034,7 +1036,6 @@ static void process_expr (LLVMOpcode opcode, LLVMValueRef expr) {
 
   ptr_size = LLVMPointerSize (TD);
   switch (opcode) {
-#if 0
   case LLVMFNeg:
     op0 = LLVMGetOperand (expr, 0);
     type = LLVMTypeOf (expr); type_id = LLVMGetTypeKind (type);
@@ -1043,10 +1044,9 @@ static void process_expr (LLVMOpcode opcode, LLVMValueRef expr) {
     res_reg = get_expr_res_reg (expr, mir_type);
     mir_op0 = get_mir_op (op0, mir_type);
     MIR_append_insn (context, curr_mir_func,
-		     MIR_new_insn (context, mir_type == MIR_T_F ? FNEG : mir_type == MIR_T_D ? DNEG : LDNEG,
+		     MIR_new_insn (context, mir_type == MIR_T_F ? MIR_FNEG : mir_type == MIR_T_D ? MIR_DNEG : MIR_LDNEG,
 				   MIR_new_reg_op (context, res_reg), mir_op0));
     break;
-#endif
   case LLVMAdd:
   case LLVMSub:
   case LLVMMul:
@@ -1366,7 +1366,10 @@ static void process_expr (LLVMOpcode opcode, LLVMValueRef expr) {
     error ("aggregate values and extract/insert value ops are not supported");
     break;
 
-  default: error ("Unknow LLVM expr"); break;
+  default:
+    printf("%d", opcode);
+    error ("Unknow LLVM expr");
+  break;
   }
 }
 
@@ -1441,7 +1444,8 @@ MIR_module_t llvm2mir (MIR_context_t c, LLVMModuleRef module) {
     }
   }
   /* Loop through all the functions in the module: */
-  for (LLVMValueRef func = LLVMGetFirstFunction (module); func; func = LLVMGetNextFunction (func)) {
+  int func_idx = 0;
+  for (LLVMValueRef func = LLVMGetFirstFunction (module); func; func = LLVMGetNextFunction (func), func_idx ++) {
     LLVMTypeRef ftype = LLVMTypeOf (func);
     LLVMTypeRef ret_type;
     int nres;
@@ -1476,8 +1480,9 @@ MIR_module_t llvm2mir (MIR_context_t c, LLVMModuleRef module) {
       add_mir_reg_to_table (LLVMGetParam (func, i),
                             MIR_reg (context, var.name, curr_mir_func->u.func));
     }
+    int block_idx = 0;
     for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock (func); bb;
-         bb = LLVMGetNextBasicBlock (bb)) {
+         bb = LLVMGetNextBasicBlock (bb), block_idx++) {
       /* Synchronize MIR and LLVM IR names.  Remember LLVM basic block is also a value. */
       curr_mir_func_reg_num++;
       for (LLVMValueRef insn = LLVMGetFirstInstruction (bb); insn;
